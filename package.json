@@ -1,0 +1,27 @@
+{
+  "name": "bauer-shell",
+  "version": "0.1.0",
+  "description": "Just another wrapper for fs and child_process.",
+  "keywords": ["sh","shell","fs","child_process"],
+  "license": "MIT",
+  "homepage": "https://github.com/yneves/node-bauer-shell",
+  "author": {
+    "name": "Yuri Neves Silveira",
+    "url": "http://yneves.com/",
+    "email": "npm@yneves.com"
+  },
+  "repository":{
+    "type": "git",
+    "url": "https://github.com/yneves/node-bauer-shell.git"
+  },
+  "scripts": {
+    "test": "mocha"
+  },
+  "devDependencies": {
+    "mocha": ">=1.0.0"
+  },
+  "dependencies": {
+    "bauer-factory": ">=1.0.0"
+  },
+  "main": "sh.js"
+}
