@@ -170,9 +170,9 @@ var sh = lib.factory.object({
 				ignore = ignore.split("\n");
 			}
 			if (lib.factory.isArray(ignore)) {
-			var temp = {};
-			ignore.forEach(function(item) { temp[item] = true });
-			ignore = temp;
+				var temp = {};
+				ignore.forEach(function(item) { temp[item] = true });
+				ignore = temp;
 			}
 			if (!/\/$/.test(path)) path += "/";
 			var items = lib.fs.readdirSync(path);
