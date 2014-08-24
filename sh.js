@@ -16,7 +16,7 @@ var lib = {
 
 // - -------------------------------------------------------------------- - //
 
-var Shell = lib.factory.class({
+var sh = lib.factory.object({
 
 	constructor: function() {
 	},
@@ -30,19 +30,37 @@ var Shell = lib.factory.class({
 			for (var i = 0; i < list.length; i++) {
 				this.rm(list[i]);
 			}
-			return this;
+			return sh;
+		},
+
+		// .rm(list,callback)
+		af: function(list,callback) {
+			var error = [];
+			if (list.length == 0) {
+				callback(error);
+			} else {
+				for (var i = 0; i < list.length; i++) {
+					this.rm(list[i],function(err) {
+						error.push(err);
+						if (error.length == list.length) {
+							callback(error);
+						}
+					});
+				}
+			}
+			return sh;
 		},
 
 		// .rm(file)
 		s: function(file) {
 			try { lib.fs.unlinkSync(file) } catch(e) {}
-			return this;
+			return sh;
 		},
 
 		// .rm(file,callback)
 		sf: function(file,callback) {
 			lib.fs.unlink(file,callback);
-			return this;
+			return sh;
 		},
 
 	},
@@ -54,12 +72,12 @@ var Shell = lib.factory.class({
 		// .mk(dir)
 		s: function(dir) {
 			lib.fs.mkdirSync(dir);
-			return this;
+			return sh;
 		},
 
-		// .mk(dir,tree)
-		sb: function(dir,tree) {
-			if (tree) {
+		// .mk(dir,recursive)
+		sb: function(dir,recursive) {
+			if (recursive) {
 				var parts = dir.split("/");
 				for (var i = 0; i < parts.length; i++) {
 					var temp = [];
@@ -81,8 +99,9 @@ var Shell = lib.factory.class({
 		// .mk(dir,callback)
 		sf: function(dir,callback) {
 			lib.fs.mkdir(dir,callback);
-			return this;
+			return sh;
 		},
+
 	},
 
 // - -------------------------------------------------------------------- - //
@@ -92,13 +111,30 @@ var Shell = lib.factory.class({
 		// .mv(old,new)
 		ss: function(oldpath,newpath) {
 			lib.fs.renameSync(oldpath,newpath);
-			return this;
+			return sh;
 		},
 
 		// .mv(old,new,callback)
 		ssf: function(oldpath,newpath,callback) {
 			lib.fs.rename(oldpath,newpath,callback);
-			return this;
+			return sh;
+		},
+
+	},
+
+// - -------------------------------------------------------------------- - //
+
+	ln: {
+
+		// .ln(source,target)
+		ss: function(srcpath,target) {
+			lib.fs.symlinkSync(srcpath,target);
+			return sh;
+		},
+
+		ssf: function(srcpath,target,callback) {
+			lib.fs.symlink(srcpath,target,callback);
+			return sh;
 		},
 
 	},
@@ -107,7 +143,7 @@ var Shell = lib.factory.class({
 
 	ls: {
 
-		// .ls(path) -- sync
+		// .ls(path)
 		s: function(path) {
 			var files = [];
 			if (!/\/$/.test(path)) path += "/";
@@ -117,32 +153,133 @@ var Shell = lib.factory.class({
 			return files;
 		},
 
-		// .ls(path,callback) -- async
+		// .ls(path,callback)
 		sf: function(path,callback) {
 			lib.fs.readdir(path,function(err,files) {
 				callback(files);
 			});
+			return sh;
+		},
+
+		// .ls(path,options)
+		so: function(path,opts) {
+			var list = [];
+			var recursive = opts.recursive;
+			var ignore = opts.ignore;
+			if (lib.factory.isString(ignore)) {
+				ignore = ignore.split("\n");
+			}
+			if (lib.factory.isArray(ignore)) {
+			var temp = {};
+			ignore.forEach(function(item) { temp[item] = true });
+			ignore = temp;
+			}
+			if (!/\/$/.test(path)) path += "/";
+			var items = lib.fs.readdirSync(path);
+			for (var i = 0; i < items.length; i++) {
+				if (!ignore || !ignore[items[i]]) {
+					var item = path + items[i];
+					list.push(item);
+					if (recursive) {
+						if (sh.isDir(item)) {
+							list.push.apply(list,sh.ls(item,opts));
+						}
+					}
+				}
+			}
+			return list;
+		},
+
+		// .ls(path,options,callback)
+		sof: function(path,opts,callback) {
+			var list = [];
+			var recursive = opts.recursive;
+			var ignore = opts.ignore;
+			if (lib.factory.isString(ignore)) {
+				ignore = ignore.split("\n");
+			}
+			if (lib.factory.isArray(ignore)) {
+				var temp = {};
+				ignore.forEach(function(item) { temp[item] = true });
+				ignore = temp;
+			}
+			if (!/\/$/.test(path)) path += "/";
+			lib.fs.readdir(path,function(error,items) {
+				var waiting = 0;
+				if (!error) {
+					waiting += items.length;
+					items.forEach(function(val,i) {
+						if (ignore && ignore[val]) {
+							waiting--;
+						} else {
+							var item = path + val;
+							list.push(item);
+							if (recursive) {
+								sh.isDir(item,function(isDir) {
+									if (isDir) {
+										sh.ls(item,opts,function(error,sublist) {
+											list.push.apply(list,sublist);
+											waiting--;
+											waiting == 0 && callback(error,list);
+										});
+									} else {
+										waiting--;
+										waiting == 0 && callback(error,list);
+									}
+								});
+							} else {
+								waiting--;
+							}
+						}
+					});
+				}
+				waiting == 0 && callback(error,list);
+			});
+			return sh;
 		},
 
 	},
+
+// - -------------------------------------------------------------------- - //
 
 	dirs: {
 
 		// .dirs(path)
 		s: "return this.dirs(this.ls(s));",
 
+		// .dirs(path,callback)
+		sf: function(path,callback) {
+			sh.ls(path,function(list) {
+				sh.dirs(list,callback);
+			});
+			return sh;
+		},
+
 		// .dirs(list)
 		a: function(list) {
 			var dirs = [];
 			for (var i = 0; i < list.length; i++) {
-				if (lib.fs.existsSync(list[i])) {
-					var stat = lib.fs.statSync(list[i]);
-					if (stat.isDirectory() && !stat.isSymbolicLink()) {
-						dirs.push(list[i]);
-					}
+				if (sh.isDir(list[i])) {
+					dirs.push(list[i]);
 				}
 			}
 			return dirs;
+		},
+
+		// .dirs(list,callback)
+		af: function(list,callback) {
+			var dirs = [];
+			var waiting = list.length;
+			list.forEach(function(item) {
+				sh.isDir(item,function(isDir) {
+					if (isDir) {
+						dirs.push(item);
+					}
+					waiting--;
+					waiting == 0 && callback(dirs);
+				});
+			});
+			return sh;
 		},
 
 	},
@@ -152,18 +289,39 @@ var Shell = lib.factory.class({
 		// .files(path)
 		s: "return this.files(this.ls(s));",
 
+		// .files(path,callback)
+		sf: function(path,callback) {
+			sh.ls(path,function(list) {
+				sh.files(list,callback);
+			});
+			return sh;
+		},
+
 		// .files(list)
 		a: function(list) {
 			var files = [];
 			for (var i = 0; i < list.length; i++) {
-				if (lib.fs.existsSync(list[i])) {
-					var stat = lib.fs.statSync(list[i]);
-					if (stat.isFile() && !stat.isSymbolicLink()) {
-						files.push(list[i]);
-					}
+				if (sh.isFile(list[i])) {
+					files.push(list[i]);
 				}
 			}
 			return files;
+		},
+
+		// .files(list,callback)
+		af: function(list,callback) {
+			var files = [];
+			var waiting = list.length;
+			list.forEach(function(item) {
+				sh.isFile(item,function(isFile) {
+					if (isFile) {
+						files.push(item);
+					}
+					waiting--;
+					waiting == 0 && callback(files);
+				});
+			});
+			return sh;
 		},
 
 	},
@@ -173,18 +331,39 @@ var Shell = lib.factory.class({
 		// .links(path)
 		s: "return this.links(this.ls(s));",
 
+		// .links(path,callback)
+		sf: function(path,callback) {
+			sh.ls(path,function(list) {
+				sh.links(list,callback);
+			});
+			return sh;
+		},
+
 		// .links(list)
 		a: function(list) {
 			var links = [];
 			for (var i = 0; i < list.length; i++) {
-				if (lib.fs.existsSync(list[i])) {
-					var stat = lib.fs.statSync(list[i]);
-					if (stat.isSymbolicLink()) {
-						links.push(list[i]);
-					}
+				if (sh.isLink(list[i])) {
+					links.push(list[i]);
 				}
 			}
 			return links;
+		},
+
+		// .links(list,callback)
+		af: function(list,callback) {
+			var links = [];
+			var waiting = list.length;
+			list.forEach(function(item) {
+				sh.isLink(item,function(isLink) {
+					if (isLink) {
+						links.push(item);
+					}
+					waiting--;
+					waiting == 0 && callback(links);
+				});
+			});
+			return sh;
 		},
 
 	},
@@ -194,27 +373,15 @@ var Shell = lib.factory.class({
 	cp: {
 
 		// .cp(source,target)
-		ss: "return this.cp(s0,s1,false)",
+		ss: "return this.cp(s0,s1,{})",
 
-		// .cp(source,target,recurse)
-		ssb: function(source,target,recurse) {
-			if (this.isDir(source)) {
-				if (!this.exists(target)) {
-					this.mk(target,true);
-				}
-				var files = this.files(source);
-				for (var i = 0; i < files.length; i++) {
-					this.cp(files[i],target + "/" + lib.path.basename(files[i]));
-				}
-				var links = this.links(source);
-				for (var i = 0; i < links.length; i++) {
-					this.cp(links[i],target + "/" + lib.path.basename(links[i]));
-				}
-				if (recurse) {
-					var dirs = this.dirs(source);
-					for (var i = 0; i < dirs.length; i++) {
-						this.cp(dirs[i],target + "/" + lib.path.basename(dirs[i]),recurse);
-					}
+		// .cp(source,target,options)
+		sso: function(source,target,opts) {
+			if (sh.isDir(source)) {
+				sh.exists(target) || sh.mk(target,true);
+				var list = sh.ls(source,opts);
+				for (var i = 0; i < list.length; i++) {
+					this.cp(list[i],target + "/" + lib.path.basename(list[i]));
 				}
 			} else if (this.isFile(source)) {
 				var BUF_LENGTH, buff, bytesRead, fdr, fdw, pos;
@@ -235,7 +402,7 @@ var Shell = lib.factory.class({
 				var srcpath = lib.fs.readlinkSync(source);
 				lib.fs.symlinkSync(srcpath,target);
 			}
-			return this;
+			return sh;
 		},
 
 	},
@@ -259,7 +426,7 @@ var Shell = lib.factory.class({
 			lib.fs.exists(file,function(exists) {
 				callback(exists);
 			});
-			return this;
+			return sh;
 		},
 
 	},
@@ -282,6 +449,22 @@ var Shell = lib.factory.class({
 			return isDir;
 		},
 
+		// .isDir(path,callback)
+		sf: function(path,callback) {
+			sh.exists(path,function(exists) {
+				lib.fs.lstat(path,function(error,stat) {
+					var isDir = false;
+					if (stat) {
+						if (stat.isDirectory() && !stat.isSymbolicLink()) {
+							isDir = true;
+						}
+					}
+					callback(isDir);
+				});
+			});
+			return sh;
+		},
+
 	},
 
 	isFile: {
@@ -300,6 +483,22 @@ var Shell = lib.factory.class({
 			return isFile;
 		},
 
+		// .isDir(path,callback)
+		sf: function(path,callback) {
+			sh.exists(path,function(exists) {
+				lib.fs.lstat(path,function(error,stat) {
+					var isFile = false;
+					if (stat) {
+						if (stat.isFile() && !stat.isSymbolicLink()) {
+							isFile = true;
+						}
+					}
+					callback(isFile);
+				});
+			});
+			return sh;
+		},
+
 	},
 
 	isLink: {
@@ -316,6 +515,22 @@ var Shell = lib.factory.class({
 				}
 			}
 			return isLink;
+		},
+
+		// .isLink(path,callback)
+		sf: function(path,callback) {
+			sh.exists(path,function(exists) {
+				lib.fs.lstat(path,function(error,stat) {
+					var isLink = false;
+					if (stat) {
+						if (stat.isSymbolicLink()) {
+							isLink = true;
+						}
+					}
+					callback(isDir);
+				});
+			});
+			return sh;
 		},
 
 	},
@@ -346,7 +561,7 @@ var Shell = lib.factory.class({
 					callback(0);
 				}
 			});
-			return this;
+			return sh;
 		},
 
 	},
@@ -370,7 +585,7 @@ var Shell = lib.factory.class({
 			var date = new Date();
 			var ms = period * factor;
 			date.setTime(date.getTime() - ms)
-			return this.modified(file,date);
+			return sh.modified(file,date);
 		},
 
 		// .modified(file,text)
@@ -381,19 +596,21 @@ var Shell = lib.factory.class({
 				factor = 24 * 60 * 60 * 1000;
 			} else if (suffix == "w") {
 				factor = 7 * 24 * 60 * 60 * 1000;
+			} else if (suffix == "h") {
+				factor = 60 * 60 * 1000;
 			}
 			var period = parseInt(since.substr(0,since.length - 1));
 			var date = new Date();
 			var ms = period * factor;
 			date.setTime(date.getTime() - ms)
-			return this.modified(file,date,callback);
+			return sh.modified(file,date,callback);
 		},
 
 		// .modified(file,ms)
 		sn: function(file,since) {
 			var date = new Date();
 			date.setTime(date.getTime() - since);
-			return this.modified(file,date);
+			return sh.modified(file,date);
 		},
 
 		// .modified(file,ms,callback)
@@ -414,7 +631,7 @@ var Shell = lib.factory.class({
 			lib.fs.stat(file,function(err,stats) {
 				callback(stats ? stats.mtime < since : true);
 			});
-			return this;
+			return sh;
 		},
 
 	},
@@ -456,7 +673,7 @@ var Shell = lib.factory.class({
 			lib.fs.readFile(file,"utf8",function(error,data) {
 				callback(data,error);
 			});
-			return this;
+			return sh;
 		},
 
 	},
@@ -476,7 +693,7 @@ var Shell = lib.factory.class({
 		// .write(file,content)
 		ss: function(file,content) {
 			lib.fs.writeFileSync(file,content);
-			return this;
+			return sh;
 		},
 
 		// .write(file,content,callback)
@@ -484,7 +701,25 @@ var Shell = lib.factory.class({
 			lib.fs.writeFile(file,content,function(error) {
 				callback(error);
 			});
-			return this;
+			return sh;
+		},
+
+	},
+
+// - -------------------------------------------------------------------- - //
+
+	append: {
+
+		// .append(file,content)
+		ss: function(file,content) {
+			lib.fs.appendFileSync(file,content);
+			return sh;
+		},
+
+		// .append(file,content,callback)
+		ssf: function(file,content,callback) {
+			lib.fs.appendFile(file,content,callback);
+			return sh;
 		},
 
 	},
@@ -492,6 +727,18 @@ var Shell = lib.factory.class({
 // - -------------------------------------------------------------------- - //
 
 	fork: {
+
+		// .fork(cmd)
+		s: "return this.fork({ cmd: s },function() {})",
+
+		// .fork(cmd,callback)
+		sf: "return this.fork({ cmd: s },f)",
+
+		// .fork(cmd,args)
+		sa: "return this.fork({ cmd: s, args: a },function() {})",
+
+		// .fork(cmd,args,callback)
+		saf: "return this.fork({ cmd: s, args: a },f)",
 
 		// .fork(options)
 		o: "return this.fork(o,function() {})",
@@ -528,6 +775,18 @@ var Shell = lib.factory.class({
 
 	spawn: {
 
+		// .spawn(cmd)
+		s: "return this.spawn({ cmd: s },function() {})",
+
+		// .spawn(cmd,callback)
+		sf: "return this.spawn({ cmd: s },f)",
+
+		// .spawn(cmd,args)
+		sa: "return this.spawn({ cmd: s, args: a },function() {})",
+
+		// .spawn(cmd,args,callback)
+		saf: "return this.spawn({ cmd: s, args: a },f)",
+
 		// .spawn(options)
 		o: "return this.spawn(o,function() {})",
 
@@ -562,6 +821,18 @@ var Shell = lib.factory.class({
 // - -------------------------------------------------------------------- - //
 
 	exec: {
+
+		// .exec(cmd)
+		s: "return this.exec({ cmd: s },function() {})",
+
+		// .exec(cmd,callback)
+		sf: "return this.exec({ cmd: s },f)",
+
+		// .exec(cmd,args)
+		sa: "return this.exec({ cmd: s, args: a },function() {})",
+
+		// .exec(cmd,args,callback)
+		saf: "return this.exec({ cmd: s, args: a },f)",
 
 		// .exec(options)
 		o: "return this.exec(o,function() {})",
@@ -598,6 +869,18 @@ var Shell = lib.factory.class({
 
 	execFile: {
 
+		// .execFile(cmd)
+		s: "return this.execFile({ cmd: s },function() {})",
+
+		// .execFile(cmd,callback)
+		sf: "return this.execFile({ cmd: s },f)",
+
+		// .execFile(cmd,args)
+		sa: "return this.execFile({ cmd: s, args: a },function() {})",
+
+		// .execFile(cmd,args,callback)
+		saf: "return this.execFile({ cmd: s, args: a },f)",
+
 		// .execFile(options)
 		o: "return this.execFile(o,function() {})",
 
@@ -633,6 +916,6 @@ var Shell = lib.factory.class({
 
 // - -------------------------------------------------------------------- - //
 
-module.exports = new Shell();
+module.exports = sh;
 
 // - -------------------------------------------------------------------- - //
