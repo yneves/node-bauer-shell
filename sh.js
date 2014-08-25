@@ -745,23 +745,13 @@ var sh = lib.factory.object({
 
 		// .fork(options,callback)
 		of: function(options,callback) {
-			var stdout = [];
-			var stderr = [];
 			var error = null;
 			var proc = lib.cp.fork(options.cmd,options.args,options.opts);
-			proc.stdout.on("data",function(data) {
-				return stdout.push(data.toString());
-			});
-			proc.stderr.on("data",function(data) {
-				return stderr.push(data.toString());
-			});
-			proc.on("exit",function(code, signal) {
+			proc.on("exit",function(code,signal) {
 				if (code !== 0) {
 					error = new Error(signal);
 				}
 				var results = {
-					stderr: stderr.join(""),
-					stdout: stdout.join(""),
 					code: code
 				};
 				return callback(error,results,code);
@@ -802,7 +792,7 @@ var sh = lib.factory.object({
 	    proc.stderr.on("data",function(data) {
 	      return stderr.push(data.toString());
 	    });
-	    proc.on("exit",function(code, signal) {
+	    proc.on("exit",function(code,signal) {
 	      if (code !== 0) {
 	        error = new Error(signal);
 	      }
@@ -849,7 +839,7 @@ var sh = lib.factory.object({
 			proc.stderr.on("data",function(data) {
 				return stderr.push(data.toString());
 			});
-			proc.on("exit",function(code, signal) {
+			proc.on("exit",function(code,signal) {
 				if (code !== 0) {
 					error = new Error(signal);
 				}
@@ -896,7 +886,7 @@ var sh = lib.factory.object({
 			proc.stderr.on("data",function(data) {
 				return stderr.push(data.toString());
 			});
-			proc.on("exit",function(code, signal) {
+			proc.on("exit",function(code,signal) {
 				if (code !== 0) {
 					error = new Error(signal);
 				}
