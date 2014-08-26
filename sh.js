@@ -155,8 +155,11 @@ var sh = lib.factory.object({
 
 		// .ls(path,callback)
 		sf: function(path,callback) {
+			if (!/\/$/.test(path)) path += "/";
 			lib.fs.readdir(path,function(err,files) {
-				callback(files);
+				callback(files.map(function(file) {
+					return path + file;
+				}));
 			});
 			return sh;
 		},
