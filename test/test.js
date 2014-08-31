@@ -2,7 +2,7 @@
 // - libs
 
 var sh = require("../");
-var cwd = __dirname + "/../";
+var cwd = __dirname + "/";
 var assert = require("assert");
 
 
@@ -11,9 +11,6 @@ var assert = require("assert");
 // - Shell
 
 describe("Shell",function() {
-
-
-
 });
 
 // - -------------------------------------------------------------------- - //

@@ -53,7 +53,9 @@ var sh = lib.factory.object({
 
 		// .rm(file)
 		s: function(file) {
-			try { lib.fs.unlinkSync(file) } catch(e) {}
+			if (lib.fs.existsSync(file)) {
+				lib.fs.unlinkSync(file);
+			}
 			return sh;
 		},
 
@@ -71,36 +73,56 @@ var sh = lib.factory.object({
 
 		// .mk(dir)
 		s: function(dir) {
-			lib.fs.mkdirSync(dir);
-			return sh;
-		},
-
-		// .mk(dir,recursive)
-		sb: function(dir,recursive) {
-			if (recursive) {
-				var parts = dir.split("/");
-				for (var i = 0; i < parts.length; i++) {
-					var temp = [];
-					for (var x = 0; x <= i ; x++) {
-						temp.push(parts[x]);
-					}
-					var path = temp.join("/");
-					if (path.length > 0) {
-						if (!lib.fs.existsSync(path)) {
-							lib.fs.mkdirSync(path);
-						}
-					}
+			var resolved = lib.path.resolve(dir);
+			var parts = resolved.split(lib.path.sep);
+			var len = parts.length;
+			var path = "";
+			for (var i = 0; i < len; i++) {
+				path += parts[i] + lib.path.sep;
+				if (!lib.fs.existsSync(path)) {
+					lib.fs.mkdirSync(path);
 				}
-			} else {
-				lib.fs.mkdirSync(path);
 			}
+			return sh;
 		},
 
 		// .mk(dir,callback)
 		sf: function(dir,callback) {
-			lib.fs.mkdir(dir,callback);
+			var resolved = lib.path.resolve(dir);
+			var parts = resolved.split(lib.path.sep);
+			var len = parts.length;
+			var path = "";
+			var paths = [];
+			for (var i = 0; i < len; i++) {
+				path += parts[i] + lib.path.sep;
+				paths.push(path);
+			}
+			function recurse() {
+				if (paths.length > 0) {
+					var path = paths.shift();
+					lib.fs.exists(path,function(exists) {
+						if (exists) {
+							recurse();
+						} else {
+							lib.fs.mkdir(path,function(error) {
+								if (error) {
+									callback(error);
+								} else {
+									recurse();
+								}
+							})
+						}
+					});
+				} else {
+					callback();
+				}
+			}
+			recurse();
 			return sh;
 		},
+
+		// backward compatibility
+		sb: "console.warn('deprecated'); return this.mk(s);",
 
 	},
 
@@ -146,19 +168,17 @@ var sh = lib.factory.object({
 		// .ls(path)
 		s: function(path) {
 			var files = [];
-			if (!/\/$/.test(path)) path += "/";
 			lib.fs.readdirSync(path).forEach(function(file) {
-				files.push(path + file);
+				files.push(lib.path.resolve(path,file));
 			});
 			return files;
 		},
 
 		// .ls(path,callback)
 		sf: function(path,callback) {
-			if (!/\/$/.test(path)) path += "/";
 			lib.fs.readdir(path,function(err,files) {
 				callback(files.map(function(file) {
-					return path + file;
+					return lib.path.resolve(path,file);
 				}));
 			});
 			return sh;
@@ -177,11 +197,10 @@ var sh = lib.factory.object({
 				ignore.forEach(function(item) { temp[item] = true });
 				ignore = temp;
 			}
-			if (!/\/$/.test(path)) path += "/";
 			var items = lib.fs.readdirSync(path);
 			for (var i = 0; i < items.length; i++) {
 				if (!ignore || !ignore[items[i]]) {
-					var item = path + items[i];
+					var item = lib.path.resolve(path,items[i]);
 					list.push(item);
 					if (recursive) {
 						if (sh.isDir(item)) {
@@ -206,7 +225,6 @@ var sh = lib.factory.object({
 				ignore.forEach(function(item) { temp[item] = true });
 				ignore = temp;
 			}
-			if (!/\/$/.test(path)) path += "/";
 			lib.fs.readdir(path,function(error,items) {
 				var waiting = 0;
 				if (!error) {
@@ -215,7 +233,7 @@ var sh = lib.factory.object({
 						if (ignore && ignore[val]) {
 							waiting--;
 						} else {
-							var item = path + val;
+							var item = lib.path.resolve(path,val);
 							list.push(item);
 							if (recursive) {
 								sh.isDir(item,function(isDir) {
@@ -383,8 +401,9 @@ var sh = lib.factory.object({
 			if (sh.isDir(source)) {
 				sh.exists(target) || sh.mk(target,true);
 				var list = sh.ls(source,opts);
-				for (var i = 0; i < list.length; i++) {
-					this.cp(list[i],target + "/" + lib.path.basename(list[i]));
+				var len = list.length;
+				for (var i = 0; i < len; i++) {
+					this.cp(list[i],lib.path.resolve(target,lib.path.basename(list[i])));
 				}
 			} else if (this.isFile(source)) {
 				var BUF_LENGTH, buff, bytesRead, fdr, fdw, pos;
@@ -426,9 +445,7 @@ var sh = lib.factory.object({
 
 		// .exists(file,callback)
 		sf: function(file,callback) {
-			lib.fs.exists(file,function(exists) {
-				callback(exists);
-			});
+			lib.fs.exists(file,callback);
 			return sh;
 		},
 
@@ -545,11 +562,10 @@ var sh = lib.factory.object({
 		// .size(file)
 		s: function(file) {
 			if (lib.fs.existsSync(file)) {
-				var stat;
-				try { stat = lib.fs.statSync(file) } catch(e) {}
-				return stat && stat.size ? stat.size : 0;
-			} else {
-				return 0;
+				var stat = lib.fs.statSync(file);
+				if (stat) {
+					return stat.size;
+				}
 			}
 		},
 
@@ -558,10 +574,14 @@ var sh = lib.factory.object({
 			lib.fs.exists(file,function(exists) {
 				if (exists) {
 					lib.fs.stat(file,function(err,stat) {
-						callback(stat && stat.size ? stat.size : 0);
+						if (stat) {
+							callback(stat.size);
+						} else {
+							callback();
+						}
 					});
 				} else {
-					callback(0);
+					callback();
 				}
 			});
 			return sh;
@@ -645,11 +665,13 @@ var sh = lib.factory.object({
 
 		// .json(array)
 		a: function(arr) {
+			console.warn("deprecated");
 			return JSON.stringify(arr,null,2);
 		},
 
 		// .json(object)
 		o: function(obj) {
+			console.warn("deprecated");
 			return JSON.stringify(obj,null,2);
 		},
 
@@ -657,6 +679,17 @@ var sh = lib.factory.object({
 		s: function(file) {
 			var content = this.read(file);
 			return JSON.parse(content);
+		},
+
+		// .json(file,callback)
+		sf: function(file,callback) {
+			this.read(file,function(error,content) {
+				if (error) {
+					callback(error);
+				} else {
+					callback(null,JSON.parse(content));
+				}
+			});
 		},
 
 	},
@@ -673,9 +706,7 @@ var sh = lib.factory.object({
 
 		// .read(file,callback)
 		sf: function(file,callback) {
-			lib.fs.readFile(file,"utf8",function(error,data) {
-				callback(data,error);
-			});
+			lib.fs.readFile(file,"utf8",callback);
 			return sh;
 		},
 
@@ -701,9 +732,7 @@ var sh = lib.factory.object({
 
 		// .write(file,content,callback)
 		ssf: function(file,content,callback) {
-			lib.fs.writeFile(file,content,function(error) {
-				callback(error);
-			});
+			lib.fs.writeFile(file,content,callback);
 			return sh;
 		},
 
