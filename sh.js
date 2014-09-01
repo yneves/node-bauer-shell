@@ -10,6 +10,7 @@
 var lib = {
 	fs: require("fs"),
 	path: require("path"),
+	stream: require("stream"),
 	cp: require("child_process"),
 	factory: require("bauer-factory"),
 };
@@ -19,6 +20,14 @@ var lib = {
 var sh = lib.factory.object({
 
 	constructor: function() {
+	},
+
+	parseJSON: function(content,callback) {
+		try {
+			callback(null,JSON.parse(content));
+		} catch(error) {
+			callback(error);
+		}
 	},
 
 // - -------------------------------------------------------------------- - //
@@ -663,31 +672,79 @@ var sh = lib.factory.object({
 
 	json: {
 
-		// .json(array)
-		a: function(arr) {
-			console.warn("deprecated");
-			return JSON.stringify(arr,null,2);
-		},
-
-		// .json(object)
-		o: function(obj) {
-			console.warn("deprecated");
-			return JSON.stringify(obj,null,2);
-		},
-
 		// .json(file)
 		s: function(file) {
 			var content = this.read(file);
 			return JSON.parse(content);
 		},
 
+		// .json(file,defaults)
+		so: function(file,defaults) {
+			if (lib.fs.existsSync(file)) {
+				var content = lib.fs.readFileSync(file,"utf8");
+				return JSON.parse(content);
+			} else {
+				return defaults;
+			}
+		},
+
+		// .json(file,defaults)
+		sa: function(file,defaults) {
+			if (lib.fs.existsSync(file)) {
+				var content = lib.fs.readFileSync(file,"utf8");
+				return JSON.parse(content);
+			} else {
+				return defaults;
+			}
+		},
+
 		// .json(file,callback)
 		sf: function(file,callback) {
-			this.read(file,function(error,content) {
-				if (error) {
-					callback(error);
+			lib.fs.exists(file,function(exists) {
+				if (exists) {
+					lib.fs.readFile(file,function(error,content) {
+						if (error) {
+							callback(error);
+						} else {
+							sh.parseJSON(content,callback);
+						}
+					});
 				} else {
-					callback(null,JSON.parse(content));
+					callback(new Error("file not found"));
+				}
+			});
+		},
+
+		// .json(file,defaults,callback)
+		sof: function(file,defaults,callback) {
+			lib.fs.exists(file,function(exists) {
+				if (exists) {
+					lib.fs.readFile(file,function(error,content) {
+						if (error) {
+							callback(error);
+						} else {
+							sh.parseJSON(content,callback);
+						}
+					});
+				} else {
+					callback(null,defaults);
+				}
+			});
+		},
+
+		// .json(file,defaults,callback)
+		saf: function(file,defaults,callback) {
+			lib.fs.exists(file,function(exists) {
+				if (exists) {
+					lib.fs.readFile(file,function(error,content) {
+						if (error) {
+							callback(error);
+						} else {
+							sh.parseJSON(content,callback);
+						}
+					});
+				} else {
+					callback(null,defaults);
 				}
 			});
 		},
@@ -799,6 +856,48 @@ var sh = lib.factory.object({
 				}
 				lib.fs.appendFile(file,content,callback);
 			});
+			return sh;
+		},
+
+	},
+
+// - -------------------------------------------------------------------- - //
+
+	pipe: {
+
+		// .pipe(read,write,callback)
+		ssf: function(read,write,callback) {
+			var readable = lib.fs.createReadStream(read);
+			var writable = lib.fs.createWriteStream(write);
+			sh.pipe(readable,writable,callback);
+			return sh;
+		},
+
+		// .pipe(readable,write,callback)
+		osf: function(readable,write,callback) {
+			var writable = lib.fs.createWriteStream(write);
+			sh.pipe(readable,writable,callback);
+			return sh;
+		},
+
+		// .pipe(read,writable,callback)
+		sof: function(read,writable,callback) {
+			var readable = lib.fs.createReadStream(read);
+			sh.pipe(readable,writable,callback);
+			return sh;
+		},
+
+		// .pipe(readable,writable,callback)
+		oof: function(readable,writable,callback) {
+			if (!readable instanceof lib.stream.Readable) {
+				throw new Error("not a readable stream");
+			}
+			if (!writable instanceof lib.stream.Writable) {
+				throw new Error("not a writable stream");
+			}
+			readable.pipe(writable);
+			readable.on("error",callback);
+			readable.on("end",callback);
 			return sh;
 		},
 
