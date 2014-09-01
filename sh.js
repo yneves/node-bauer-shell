@@ -717,22 +717,42 @@ var sh = lib.factory.object({
 	write: {
 
 		// .write(file,object)
-		sa: "return this.write(s,JSON.stringify(a,null,2))",
 		so: "return this.write(s,JSON.stringify(o,null,2))",
 
 		// .write(file,object,callback)
-		saf: "return this.write(s,JSON.stringify(a,null,2),f)",
 		sof: "return this.write(s,JSON.stringify(o,null,2),f)",
+
+		// .write(file,array)
+		sa: "return this.write(s,JSON.stringify(a,null,2))",
+
+		// .write(file,array,callback)
+		saf: "return this.write(s,JSON.stringify(a,null,2),f)",
+
+		// .write(file,error)
+		se: "return this.write(s,e.toString()+' - '+e.stack.toString());",
+
+		// .write(file,error,callback)
+		sef: "return this.write(s,e.toString()+' - '+e.stack.toString(),f);",
 
 		// .write(file,content)
 		ss: function(file,content) {
+			var dir = lib.path.dirname(file);
+			if (!lib.fs.existsSync(dir)) {
+				sh.mk(dir);
+			}
 			lib.fs.writeFileSync(file,content);
 			return sh;
 		},
 
 		// .write(file,content,callback)
 		ssf: function(file,content,callback) {
-			lib.fs.writeFile(file,content,callback);
+			var dir = lib.path.dirname(file);
+			lib.fs.exists(dir,function(exists) {
+				if (!exists) {
+					sh.mk(dir);
+				}
+				lib.fs.writeFile(file,content,callback);
+			});
 			return sh;
 		},
 
@@ -742,15 +762,43 @@ var sh = lib.factory.object({
 
 	append: {
 
+		// .append(file,object)
+		so: "return this.append(s,JSON.stringify(o,null,2))",
+
+		// .append(file,object,callback)
+		sof: "return this.append(s,JSON.stringify(o,null,2),f)",
+
+		// .append(file,array)
+		sa: "return this.append(s,JSON.stringify(a,null,2))",
+
+		// .append(file,array,callback)
+		saf: "return this.append(s,JSON.stringify(a,null,2),f)",
+
+		// .append(file,error)
+		se: "return this.append(s,e.toString()+' - '+e.stack.toString());",
+
+		// .append(file,error,callback)
+		sef: "return this.append(s,e.toString()+' - '+e.stack.toString(),f);",
+
 		// .append(file,content)
 		ss: function(file,content) {
+			var dir = lib.path.dirname(file);
+			if (!lib.fs.existsSync(dir)) {
+				sh.mk(dir);
+			}
 			lib.fs.appendFileSync(file,content);
 			return sh;
 		},
 
 		// .append(file,content,callback)
 		ssf: function(file,content,callback) {
-			lib.fs.appendFile(file,content,callback);
+			var dir = lib.path.dirname(file);
+			lib.fs.exists(dir,function(exists) {
+				if (!exists) {
+					sh.mk(dir);
+				}
+				lib.fs.appendFile(file,content,callback);
+			});
 			return sh;
 		},
 
