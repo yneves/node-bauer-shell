@@ -1,6 +1,6 @@
 {
   "name": "bauer-shell",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "description": "Just another wrapper for fs and child_process.",
   "keywords": ["sh","shell","fs","child_process"],
   "license": "MIT",

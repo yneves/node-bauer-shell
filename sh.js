@@ -868,15 +868,28 @@ var sh = lib.factory.object({
 		// .pipe(read,write,callback)
 		ssf: function(read,write,callback) {
 			var readable = lib.fs.createReadStream(read);
-			var writable = lib.fs.createWriteStream(write);
-			sh.pipe(readable,writable,callback);
+			sh.pipe(readable,write,callback);
 			return sh;
 		},
 
 		// .pipe(readable,write,callback)
 		osf: function(readable,write,callback) {
-			var writable = lib.fs.createWriteStream(write);
-			sh.pipe(readable,writable,callback);
+			var dir = lib.path.dirname(write);
+			lib.fs.exists(dir,function(exists) {
+				if (exists) {
+					var writable = lib.fs.createWriteStream(write);
+					sh.pipe(readable,writable,callback);
+				} else {
+					sh.mk(dir,function(error) {
+						if (error) {
+							callback(error);
+						} else {
+							var writable = lib.fs.createWriteStream(write);
+							sh.pipe(readable,writable,callback);
+						}
+					});
+				}
+			})
 			return sh;
 		},
 
