@@ -9,6 +9,7 @@
 
 var lib = {
 	fs: require("fs"),
+	zlib: require("zlib"),
 	path: require("path"),
 	stream: require("stream"),
 	cp: require("child_process"),
@@ -22,12 +23,30 @@ var sh = lib.factory.object({
 	constructor: function() {
 	},
 
+// - -------------------------------------------------------------------- - //
+
+	// .parseJSON(content,callback)
 	parseJSON: function(content,callback) {
 		try {
 			callback(null,JSON.parse(content));
 		} catch(error) {
 			callback(error);
 		}
+	},
+
+	// .parseTime(text)
+	parseTime: function(text) {
+		var suffix = text.substr(-1,1);
+		var factor = 0;
+		if (suffix == "d") {
+			factor = 24 * 60 * 60 * 1000;
+		} else if (suffix == "w") {
+			factor = 7 * 24 * 60 * 60 * 1000;
+		} else if (suffix == "h") {
+			factor = 60 * 60 * 1000;
+		}
+		var period = parseInt(text.substr(0,text.length - 1));
+		return period * factor;
 	},
 
 // - -------------------------------------------------------------------- - //
@@ -600,68 +619,88 @@ var sh = lib.factory.object({
 
 // - -------------------------------------------------------------------- - //
 
+	date: {
+
+		// .date(file)
+		s: function(file) {
+			if (lib.fs.existsSync(file)) {
+				var stat = lib.fs.statSync(file);
+				if (stat) {
+					return stat.mtime;
+				}
+			}
+		},
+
+		// .date(file,callback)
+		sf: function(file,callback) {
+			lib.fs.exists(file,function(exists) {
+				if (exists) {
+					lib.fs.stat(file,function(err,stat) {
+						if (stat) {
+							callback(stat.mtime);
+						} else {
+							callback();
+						}
+					});
+				} else {
+					callback();
+				}
+			});
+			return sh;
+		},
+
+	},
+
+// - -------------------------------------------------------------------- - //
+
 	modified: {
 
 		// .modified(file,text)
-		ss: function(file,since) {
-			var suffix = since.substr(-1,1);
-			var factor = 0;
-			if (suffix == "d") {
-				factor = 24 * 60 * 60 * 1000;
-			} else if (suffix == "w") {
-				factor = 7 * 24 * 60 * 60 * 1000;
-			} else if (suffix == "h") {
-				factor = 60 * 60 * 1000;
-			}
-			var period = parseInt(since.substr(0,since.length - 1));
+		ss: function(file,text) {
 			var date = new Date();
-			var ms = period * factor;
-			date.setTime(date.getTime() - ms)
-			return sh.modified(file,date);
+			var time = sh.parseTime(text);
+			date.setTime(date.getTime() - time)
+			sh.modified(file,date);
+			return sh;
 		},
 
 		// .modified(file,text)
 		ssf: function(file,since,callback) {
-			var suffix = since.substr(-1,1);
-			var factor = 0;
-			if (suffix == "d") {
-				factor = 24 * 60 * 60 * 1000;
-			} else if (suffix == "w") {
-				factor = 7 * 24 * 60 * 60 * 1000;
-			} else if (suffix == "h") {
-				factor = 60 * 60 * 1000;
-			}
-			var period = parseInt(since.substr(0,since.length - 1));
 			var date = new Date();
-			var ms = period * factor;
-			date.setTime(date.getTime() - ms)
-			return sh.modified(file,date,callback);
+			var time = sh.parseTime(text);
+			date.setTime(date.getTime() - time)
+			sh.modified(file,date,callback);
+			return sh;
 		},
 
 		// .modified(file,ms)
-		sn: function(file,since) {
+		sn: function(file,ms) {
 			var date = new Date();
-			date.setTime(date.getTime() - since);
+			date.setTime(date.getTime() - ms);
 			return sh.modified(file,date);
 		},
 
 		// .modified(file,ms,callback)
-		snf: function(file,since,callback) {
+		snf: function(file,ms,callback) {
 			var date = new Date();
-			date.setTime(date.getTime() - since);
-			return this.modified(file,date,callback);
+			date.setTime(date.getTime() - ms);
+			return sh.modified(file,date,callback);
 		},
 
 		// .modified(file,date)
-		sd: function(file,since) {
+		sd: function(file,date) {
 			var stats = lib.fs.statSync(file);
-			return stats ? stats.mtime < since : true;
+			return stats.mtime < date;
 		},
 
 		// .modified(file,date,callback)
-		sdf: function(file,since,callback) {
-			lib.fs.stat(file,function(err,stats) {
-				callback(stats ? stats.mtime < since : true);
+		sdf: function(file,date,callback) {
+			lib.fs.stat(file,function(error,stats) {
+				if (error) {
+					callback(error);
+				} else {
+					callback(null,stats.mtime < date)
+				}
 			});
 			return sh;
 		},
@@ -674,7 +713,7 @@ var sh = lib.factory.object({
 
 		// .json(file)
 		s: function(file) {
-			var content = this.read(file);
+			var content = lib.fs.readFileSync(file,"utf8");
 			return JSON.parse(content);
 		},
 
@@ -702,7 +741,7 @@ var sh = lib.factory.object({
 		sf: function(file,callback) {
 			lib.fs.exists(file,function(exists) {
 				if (exists) {
-					lib.fs.readFile(file,function(error,content) {
+					lib.fs.readFile(file,"utf8",function(error,content) {
 						if (error) {
 							callback(error);
 						} else {
@@ -747,6 +786,60 @@ var sh = lib.factory.object({
 					callback(null,defaults);
 				}
 			});
+		},
+
+	},
+
+// - -------------------------------------------------------------------- - //
+
+	gzip: {
+
+		// .gzip(file,callback)
+		sf: function(file,callback) {
+			lib.fs.exists(file,function(exists) {
+				if (exists) {
+					var readable = lib.fs.createReadStream(file);
+					var gunzip = lib.zlib.createGunzip();
+					readable.pipe(gunzip);
+					readable.on("error",callback);
+					gunzip.on("error",callback);
+					var data = "";
+					gunzip.on("data",function(chunk) {
+						data += chunk.toString("utf8");
+					});
+					gunzip.on("end",function() {
+						callback(null,data);
+					});
+				}
+			});
+			return sh;
+		},
+
+	},
+
+// - -------------------------------------------------------------------- - //
+
+	deflate: {
+
+		// .deflate(file,callback)
+		sf: function(file,callback) {
+			lib.fs.exists(file,function(exists) {
+				if (exists) {
+					var readable = lib.fs.createReadStream(file);
+					var inflate = lib.zlib.createInflate();
+					readable.pipe(inflate);
+					readable.on("error",callback);
+					inflate.on("error",callback);
+					var data = "";
+					inflate.on("data",function(chunk) {
+						data += chunk.toString("utf8");
+					});
+					inflate.on("end",function() {
+						callback(null,data);
+					});
+				}
+			});
+			return sh;
 		},
 
 	},
