@@ -585,31 +585,37 @@ var sh = lib.factory.object({
 
 // - -------------------------------------------------------------------- - //
 
+	stat: {
+
+		// .stat(file)
+		s: function(file) {
+			return lib.fs.statSync(file);
+		},
+
+		// .stat(file,callback)
+		sf: function(file,callback) {
+			return lib.fs.stat(file,callback);
+		},
+
+	},
+
+// - -------------------------------------------------------------------- - //
+
 	size: {
 
 		// .size(file)
 		s: function(file) {
-			if (lib.fs.existsSync(file)) {
-				var stat = lib.fs.statSync(file);
-				if (stat) {
-					return stat.size;
-				}
-			}
+			var stat = lib.fs.statSync(file);
+			return stat.size;
 		},
 
 		// .size(file,callback)
 		sf: function(file,callback) {
-			lib.fs.exists(file,function(exists) {
-				if (exists) {
-					lib.fs.stat(file,function(err,stat) {
-						if (stat) {
-							callback(stat.size);
-						} else {
-							callback();
-						}
-					});
+			lib.fs.stat(file,function(err,stat) {
+				if (error) {
+					callback(error);
 				} else {
-					callback();
+					callback(null,stat.size);
 				}
 			});
 			return sh;
@@ -623,27 +629,17 @@ var sh = lib.factory.object({
 
 		// .date(file)
 		s: function(file) {
-			if (lib.fs.existsSync(file)) {
-				var stat = lib.fs.statSync(file);
-				if (stat) {
-					return stat.mtime;
-				}
-			}
+			var stat = lib.fs.statSync(file);
+			return stat.mtime;
 		},
 
 		// .date(file,callback)
 		sf: function(file,callback) {
-			lib.fs.exists(file,function(exists) {
-				if (exists) {
-					lib.fs.stat(file,function(err,stat) {
-						if (stat) {
-							callback(stat.mtime);
-						} else {
-							callback();
-						}
-					});
+			lib.fs.stat(file,function(error,stat) {
+				if (error) {
+					callback(error);
 				} else {
-					callback();
+					callback(null,stat.mtime);
 				}
 			});
 			return sh;
